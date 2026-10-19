@@ -56,7 +56,7 @@ export function filterEvents(summaries, {
     throw new DomainError('VALIDATION', 'from must be on or before to');
   }
   if (maxPriceCents !== undefined && maxPriceCents !== null &&
-      (!Number.isInteger(maxPriceCents) || !Number.isFinite(maxPriceCents))) {
+      (!Number.isInteger(maxPriceCents) || !Number.isFinite(maxPriceCents) || maxPriceCents < 0)) {
     throw new DomainError('VALIDATION', 'maxPriceCents must be a whole number');
   }
 
