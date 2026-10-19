@@ -154,3 +154,48 @@ export function offerNextOnWaitlist(store, tierId) {
   if (!head || seatsLeft(tier) < head.quantity) return undefined;
   return queue.dequeue();
 }
+
+/**
+ * Publish an event once it has at least one ticket tier.
+ * The existing event object is updated and returned.
+ */
+export function publishEvent(store, eventId) {
+  const event = store.events.get(eventId);
+  if (!event) throw new DomainError('NOT_FOUND', 'Event not found');
+  if (!event.tierIds.length) {
+    throw new DomainError('INVALID_STATE', 'An event needs at least one ticket tier before publishing');
+  }
+  event.status = 'published';
+  return event;
+}
+
+/**
+ * Return detached public-facing summaries. Draft events are excluded by default.
+ */
+export function listEventSummaries(store, { publishedOnly = true } = {}) {
+  const summaries = [];
+  for (const event of store.events.values()) {
+    if (publishedOnly && event.status !== 'published') continue;
+    const tiers = event.tierIds
+      .map(tierId => store.tiers.get(tierId))
+      .filter(Boolean)
+      .map(tier => ({
+        id: tier.id,
+        name: tier.name,
+        priceCents: tier.priceCents,
+        capacity: tier.capacity,
+        sold: tier.sold,
+        seatsLeft: seatsLeft(tier),
+      }));
+    summaries.push({
+      id: event.id,
+      title: event.title,
+      city: event.city,
+      venue: event.venue,
+      startsAt: event.startsAt,
+      status: event.status,
+      tiers,
+    });
+  }
+  return summaries;
+}
