@@ -199,3 +199,14 @@ export function listEventSummaries(store, { publishedOnly = true } = {}) {
   }
   return summaries;
 }
+
+/** Return an event to draft status without deleting its tiers or bookings. */
+export function unpublishEvent(store, eventId) {
+  const event = store.events.get(eventId);
+  if (!event) throw new DomainError('NOT_FOUND', 'Event not found');
+  if (event.status !== 'published') {
+    throw new DomainError('INVALID_STATE', 'Only a published event can be unpublished');
+  }
+  event.status = 'draft';
+  return event;
+}
