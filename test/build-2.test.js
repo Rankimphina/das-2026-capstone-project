@@ -159,7 +159,7 @@ test('S05: bad dates, fractional max price and unknown sort return VALIDATION', 
   const events = [{ id: 'a', title: 'A', city: 'Jos', startsAt: '2026-12-01T00:00:00Z', tiers: [] }];
   errorCode(() => filterEvents(events, { from: '2026-02-30' }), 'VALIDATION');
   errorCode(() => filterEvents(events, { to: 'yesterday' }), 'VALIDATION');
-  errorCode(() => filterEvents(events, { maxPriceCents: 1.2 }), 'VALIDATION');
+  errorCode(() => filterEvents(events, { maxPriceCents: 1.2 }), 'VALIDATION');\n  errorCode(() => filterEvents(events, { maxPriceCents: -1 }), 'VALIDATION');
   errorCode(() => sortEvents(events, 'random'), 'VALIDATION');
 });
 
