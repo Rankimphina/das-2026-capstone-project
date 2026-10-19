@@ -159,6 +159,7 @@ test('S05: bad dates, fractional max price and unknown sort return VALIDATION', 
   const events = [{ id: 'a', title: 'A', city: 'Jos', startsAt: '2026-12-01T00:00:00Z', tiers: [] }];
   errorCode(() => filterEvents(events, { from: '2026-02-30' }), 'VALIDATION');
   errorCode(() => filterEvents(events, { to: 'yesterday' }), 'VALIDATION');
+  errorCode(() => filterEvents(events, { from: '2026-02-30T12:00:00Z' }), 'VALIDATION');
   errorCode(() => filterEvents(events, { maxPriceCents: 1.2 }), 'VALIDATION');
   errorCode(() => filterEvents(events, { maxPriceCents: -1 }), 'VALIDATION');
   errorCode(() => sortEvents(events, 'random'), 'VALIDATION');
@@ -220,4 +221,19 @@ test('S06: invalid booking quantities return VALIDATION and change nothing', () 
   }
   assert.equal(general.sold, 0);
   assert.equal(store.bookings.size, 0);
+});
+
+test('S05: price sort puts the cheapest event first and events without prices last', () => {
+  const events = [
+    { id: '3', title: 'No tier', startsAt: '2026-12-01', tiers: [] },
+    { id: '2', title: 'Mid', startsAt: '2026-12-01', tiers: [{ priceCents: 200 }] },
+    { id: '1', title: 'Cheap', startsAt: '2026-12-01', tiers: [{ priceCents: 100 }] },
+  ];
+  assert.deepEqual(sortEvents(events, 'price').map(event => event.title), ['Cheap', 'Mid', 'No tier']);
+});
+
+test('S05: empty lists remain empty across filtering, sorting and searching', () => {
+  assert.deepEqual(filterEvents([], {}), []);
+  assert.deepEqual(sortEvents([], 'date'), []);
+  assert.deepEqual(searchEvents([], {}, 'availability'), []);
 });
