@@ -101,7 +101,11 @@ export function sortEvents(summaries, sortBy) {
 
   return mergeSort(summaries, (a, b) => {
     let primary = 0;
-    if (sortBy === 'date') {\n      const ad = eventDate(a);\n      const bd = eventDate(b);\n      primary = ad < bd ? -1 : ad > bd ? 1 : 0;\n    }
+    if (sortBy === 'date') {
+      const ad = eventDate(a);
+      const bd = eventDate(b);
+      primary = ad < bd ? -1 : ad > bd ? 1 : 0;
+    }
     if (sortBy === 'price') {
       const ap = cheapestPrice(a);
       const bp = cheapestPrice(b);
