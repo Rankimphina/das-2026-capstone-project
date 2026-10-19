@@ -13,7 +13,9 @@ function validDate(value, field) {
   }
   const time = Date.parse(value);
   if (!Number.isFinite(time)) throw new DomainError('VALIDATION', `${field} must be a real date`);
-  if (dateOnly && new Date(time).toISOString().slice(0, 10) !== value) {
+  const calendarDate = value.slice(0, 10);
+  const calendarTime = Date.parse(calendarDate);
+  if (!Number.isFinite(calendarTime) || new Date(calendarTime).toISOString().slice(0, 10) !== calendarDate) {
     throw new DomainError('VALIDATION', `${field} must be a real date`);
   }
   return { value, time, dateOnly };
