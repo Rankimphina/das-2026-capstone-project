@@ -54,7 +54,8 @@ export function filterEvents(summaries, {
 } = {}) {
   const fromDate = validDate(from, 'from');
   const toDate = validDate(to, 'to');
-  if (fromDate && toDate && fromDate.time > toDate.time) {
+  const toBoundary = toDate?.dateOnly ? Date.parse(`${toDate.value}T23:59:59.999Z`) : toDate?.time;
+  if (fromDate && toDate && fromDate.time > toBoundary) {
     throw new DomainError('VALIDATION', 'from must be on or before to');
   }
   if (maxPriceCents !== undefined && maxPriceCents !== null &&
