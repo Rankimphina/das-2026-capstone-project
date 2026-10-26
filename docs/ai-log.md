@@ -14,3 +14,11 @@ Every time you give an AI tool a significant prompt, add an entry. Three lines e
 - **What I asked:**
 - **What came back:**
 - **What was wrong (or "nothing"):**
+
+
+## Build 3
+
+### Prompt 1: Build 3 architecture, state machine, and server
+- **What I asked:** Implement the Build 3 architecture diagrams, booking state machine, HTTP router/server, static file serving, and tests.
+- **What came back:** Added architecture documentation, explicit booking transitions, a small parameterized router, a Node HTTP server with health endpoint and static-file handling, configuration, and tests.
+- **What was wrong (or "nothing"):** The HTTP JSON parser and error response paths need verification by running the full test suite on Node 22.13+. No external packages were added.
