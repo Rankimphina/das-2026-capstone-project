@@ -1,27 +1,36 @@
-// Stable merge sort. The input array is never modified.
-export function mergeSort(items, compare) {
-  if (!Array.isArray(items)) throw new TypeError('items must be an array');
-  if (typeof compare !== 'function') throw new TypeError('compare must be a function');
+// Merge sort: O(n log n) in every case, and STABLE.
+// Stable means items that compare equal keep their original order. That matters
+// when you sort by date and want events on the same day to stay in title order.
 
-  function merge(left, right) {
-    const merged = [];
-    let i = 0;
-    let j = 0;
-    while (i < left.length && j < right.length) {
-      // Taking from the left on equality preserves original order (stability).
-      if (compare(left[i], right[j]) <= 0) merged.push(left[i++]);
-      else merged.push(right[j++]);
+const defaultCompare = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+
+// Returns a new array. The input is never modified.
+export function mergeSort(items, compare = defaultCompare) {
+  if (items.length <= 1) return [...items];
+
+  const middle = Math.floor(items.length / 2);
+  const left = mergeSort(items.slice(0, middle), compare);
+  const right = mergeSort(items.slice(middle), compare);
+  return merge(left, right, compare);
+}
+
+function merge(left, right, compare) {
+  const merged = [];
+  let l = 0;
+  let r = 0;
+
+  while (l < left.length && r < right.length) {
+    // `<= 0` (take from the LEFT on ties) is what makes the sort stable.
+    if (compare(left[l], right[r]) <= 0) {
+      merged.push(left[l]);
+      l += 1;
+    } else {
+      merged.push(right[r]);
+      r += 1;
     }
-    while (i < left.length) merged.push(left[i++]);
-    while (j < right.length) merged.push(right[j++]);
-    return merged;
   }
 
-  function sortRange(start, end) {
-    if (end - start <= 1) return items.slice(start, end);
-    const middle = start + Math.floor((end - start) / 2);
-    return merge(sortRange(start, middle), sortRange(middle, end));
-  }
-
-  return sortRange(0, items.length);
+  while (l < left.length) merged.push(left[l++]);
+  while (r < right.length) merged.push(right[r++]);
+  return merged;
 }

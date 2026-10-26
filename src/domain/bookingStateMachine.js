@@ -8,7 +8,7 @@ export const BOOKING_STATES = Object.freeze([
   'checked_in',
 ]);
 
-const ALLOWED_TRANSITIONS = Object.freeze({
+export const BOOKING_TRANSITIONS = Object.freeze({
   pending: Object.freeze(['paid', 'cancelled']),
   paid: Object.freeze(['checked_in', 'refunded', 'cancelled']),
   cancelled: Object.freeze([]),
@@ -17,17 +17,12 @@ const ALLOWED_TRANSITIONS = Object.freeze({
 });
 
 export function canTransition(from, to) {
-  return Object.hasOwn(ALLOWED_TRANSITIONS, from) &&
-    ALLOWED_TRANSITIONS[from].includes(to);
+  return Object.hasOwn(BOOKING_TRANSITIONS, from) && BOOKING_TRANSITIONS[from].includes(to);
 }
 
 export function assertTransition(from, to) {
   if (!canTransition(from, to)) {
-    throw new DomainError(
-      'INVALID_TRANSITION',
-      `Booking cannot transition from "${from}" to "${to}"`,
-      { from, to },
-    );
+    throw new DomainError('INVALID_TRANSITION', `Cannot transition booking from ${from} to ${to}`);
   }
   return true;
 }

@@ -1,47 +1,55 @@
-function compilePath(path) {
-  const segments = path.split('/').filter(Boolean);
-  const names = [];
-  const pattern = segments.map(segment => {
-    if (segment.startsWith(':')) {
-      names.push(segment.slice(1));
-      return '([^/]+)';
-    }
-    return segment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  });
-  return { regex: new RegExp(`^/${pattern.join('/')}/?$`), names };
-}
+import { DomainError } from '../domain/errors.js';
 
-export function createRouter() {
-  const routes = [];
+export class Router {
+  #routes = [];
 
-  function add(method, path, handler) {
-    if (typeof method !== 'string' || typeof path !== 'string' || typeof handler !== 'function') {
-      throw new TypeError('Route requires a method, path, and handler');
+  add(method, path, handler) {
+    if (typeof method !== 'string' || !method.trim() || typeof path !== 'string' || !path.startsWith('/')) {
+      throw new TypeError('A route requires an HTTP method and an absolute path');
     }
-    const compiled = compilePath(path);
-    routes.push({ method: method.toUpperCase(), path, handler, ...compiled });
-    return router;
+    if (typeof handler !== 'function') throw new TypeError('A route handler must be a function');
+
+    const segments = path.split('/').slice(1);
+    this.#routes.push({ method: method.toUpperCase(), path, segments, handler });
+    return this;
   }
 
-  function match(method, pathname) {
-    const requestMethod = method.toUpperCase();
-    for (const route of routes) {
-      if (route.method !== requestMethod) continue;
-      const result = route.regex.exec(pathname);
-      if (!result) continue;
+  get(path, handler) {
+    return this.add('GET', path, handler);
+  }
+
+  post(path, handler) {
+    return this.add('POST', path, handler);
+  }
+
+  match(method, path) {
+    const requestedSegments = path.split('/').slice(1);
+
+    for (const route of this.#routes) {
+      if (route.method !== method.toUpperCase() || route.segments.length !== requestedSegments.length) continue;
+
       const params = {};
-      try {
-        route.names.forEach((name, index) => {
-          params[name] = decodeURIComponent(result[index + 1]);
-        });
-      } catch {
-        return { error: 'BAD_PATH_ENCODING' };
+      let matches = true;
+      for (let index = 0; index < route.segments.length; index += 1) {
+        const expected = route.segments[index];
+        const actual = requestedSegments[index];
+        if (expected.startsWith(':')) {
+          if (!actual) {
+            matches = false;
+            break;
+          }
+          try {
+            params[expected.slice(1)] = decodeURIComponent(actual);
+          } catch {
+            throw new DomainError('INVALID_PATH', 'The request path is invalid');
+          }
+        } else if (expected !== actual) {
+          matches = false;
+          break;
+        }
       }
-      return { handler: route.handler, params, route: route.path };
+      if (matches) return { handler: route.handler, params };
     }
     return null;
   }
-
-  const router = { add, match };
-  return router;
 }

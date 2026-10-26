@@ -1,65 +1,66 @@
-# Build 3: Architecture and booking state machine
+# Build 3 architecture
 
-## 1. Application layers
+## Layers
 
 ```mermaid
-flowchart TD
-  Browser[Browser / HTTP client] --> Routes[HTTP routes]
-  Routes --> Services[Application services]
-  Services --> Rules[Domain rules]
-  Services --> Repositories[Repositories / data access]
-  Repositories --> Data[(In-memory store / database)]
-  Rules --> Data
+flowchart TB
+  routes[HTTP routes] --> services[Services]
+  services --> rules[Domain rules]
+  services --> repositories[Repositories]
+  repositories --> data[(Data store)]
 ```
 
-- **Routes / HTTP:** interpret requests, validate transport format, call services, and shape HTTP responses; they must not contain business rules or access storage directly.
-- **Services:** coordinate a use case and call domain rules and repositories; they must not depend on HTTP request/response objects.
-- **Domain rules:** enforce business invariants and state transitions; they must not perform network, filesystem, or HTTP work.
-- **Repositories / data access:** read and write data; they must not decide business policy.
-- **Data:** stores application records; it does not call other layers.
+- **Routes** may translate HTTP requests and responses; they may not contain business rules or access data directly.
+- **Services** may coordinate domain rules and repositories; they may not depend on HTTP details or call routes.
+- **Domain rules** may validate and apply business rules; they may not perform I/O or depend on services, repositories, or routes.
+- **Repositories** may read and write data; they may not make business decisions or call services, rules, or routes.
+- **Data store** holds persisted data; it may not call application layers.
 
-## 2. Data model
+## Data model
 
 ```mermaid
 erDiagram
   USERS ||--o{ EVENTS : organizes
-  EVENTS ||--|{ TICKET_TIERS : offers
-  EVENTS ||--o{ BOOKINGS : receives
   USERS ||--o{ BOOKINGS : makes
-  TICKET_TIERS ||--o{ BOOKINGS : covers
+  EVENTS ||--o{ TICKET_TIERS : offers
+  TICKET_TIERS ||--o{ BOOKINGS : reserves
+
   USERS {
-    string id
+    string id PK
+    string name
     string email
     string role
   }
   EVENTS {
-    string id
+    string id PK
+    string organizer_id FK
     string title
     string city
     string venue
-    datetime startsAt
+    datetime starts_at
     string status
-    string organizerId
   }
   TICKET_TIERS {
-    string id
-    string eventId
+    string id PK
+    string event_id FK
     string name
-    int priceCents
-    int capacity
-    int sold
+    integer price_cents
+    integer capacity
+    integer sold
   }
   BOOKINGS {
-    string id
-    string userId
-    string tierId
-    int quantity
-    int amountCents
+    string id PK
+    string user_id FK
+    string tier_id FK
+    string reference
+    integer quantity
+    integer amount_cents
     string status
+    datetime created_at
   }
 ```
 
-## 3. Booking life cycle
+## Booking life cycle
 
 ```mermaid
 stateDiagram-v2
@@ -73,5 +74,3 @@ stateDiagram-v2
   refunded --> [*]
   checked_in --> [*]
 ```
-
-Only the transitions shown are permitted. `cancelled`, `refunded`, and `checked_in` are final states.

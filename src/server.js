@@ -1,10 +1,15 @@
-import { createApp } from './http/app.js';
-import { config } from './config.js';
+import { pathToFileURL } from 'node:url';
+import { createAppServer } from './http/app.js';
+import { PORT } from './config.js';
 
-const server = createApp();
+export function startServer(port = PORT) {
+  const server = createAppServer();
+  server.listen(port, () => {
+    console.log(`Event ticketing server listening on port ${port}`);
+  });
+  return server;
+}
 
-server.listen(config.port, () => {
-  const address = server.address();
-  const port = typeof address === 'object' && address ? address.port : config.port;
-  console.log(`Event ticketing server listening on http://localhost:${port}`);
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  startServer();
+}

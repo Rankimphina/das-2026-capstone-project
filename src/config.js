@@ -1,8 +1,6 @@
-const parsedPort = Number.parseInt(process.env.PORT ?? '3000', 10);
+const portValue = process.env.PORT;
+export const PORT = portValue === undefined || portValue === '' ? 3000 : Number(portValue);
 
-export const config = Object.freeze({
-  port: Number.isInteger(parsedPort) && parsedPort >= 0 && parsedPort <= 65535
-    ? parsedPort
-    : 3000,
-  publicDir: new URL('../public/', import.meta.url),
-});
+if (!Number.isInteger(PORT) || PORT < 0 || PORT > 65535) {
+  throw new RangeError('PORT must be an integer between 0 and 65535');
+}

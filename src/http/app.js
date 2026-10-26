@@ -1,132 +1,138 @@
+import { createReadStream } from 'node:fs';
+import { realpath, stat } from 'node:fs/promises';
 import { createServer } from 'node:http';
-import { readFile, realpath, stat } from 'node:fs/promises';
-import path from 'node:path';
+import { extname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DomainError } from '../domain/errors.js';
-import { createRouter } from './router.js';
+import { Router } from './router.js';
 
-const MIME_TYPES = Object.freeze({
-  '.html': 'text/html; charset=utf-8',
+const DEFAULT_PUBLIC_DIRECTORY = fileURLToPath(new URL('../../public/', import.meta.url));
+const CONTENT_TYPES = {
   '.css': 'text/css; charset=utf-8',
+  '.html': 'text/html; charset=utf-8',
+  '.ico': 'image/x-icon',
+  '.jpeg': 'image/jpeg',
+  '.jpg': 'image/jpeg',
   '.js': 'text/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
-  '.svg': 'image/svg+xml',
   '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.webp': 'image/webp',
-  '.ico': 'image/x-icon',
+  '.svg': 'image/svg+xml',
   '.txt': 'text/plain; charset=utf-8',
-});
+  '.webp': 'image/webp',
+};
 
-function sendJson(response, statusCode, body) {
-  response.writeHead(statusCode, { 'content-type': 'application/json; charset=utf-8' });
+function sendJson(response, status, body) {
+  response.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
   response.end(JSON.stringify(body));
 }
 
-function publicPathFrom(publicDir) {
-  return publicDir instanceof URL ? fileURLToPath(publicDir) : path.resolve(publicDir);
+function sendError(response, status, code, message) {
+  sendJson(response, status, { error: { code, message } });
 }
 
 async function readJsonBody(request) {
-  if (!request.headers['content-type']?.toLowerCase().includes('application/json')) return;
-  let raw = '';
-  for await (const chunk of request) {
-    raw += chunk;
-    if (raw.length > 1_000_000) {
-      throw new DomainError('BAD_REQUEST', 'Request body is too large');
-    }
-  }
-  if (!raw.trim()) return;
+  const contentType = request.headers['content-type']?.split(';', 1)[0].trim().toLowerCase();
+  if (contentType !== 'application/json') return undefined;
+
+  let text = '';
+  for await (const chunk of request) text += chunk;
+  if (!text) return undefined;
+
   try {
-    request.body = JSON.parse(raw);
+    return JSON.parse(text);
   } catch {
-    const error = new SyntaxError('Invalid JSON request body');
-    error.code = 'INVALID_JSON';
+    throw new DomainError('INVALID_JSON', 'Request body must contain valid JSON');
+  }
+}
+
+async function servePublicFile(response, pathname, publicDirectory, method) {
+  let decodedPath;
+  try {
+    decodedPath = decodeURIComponent(pathname);
+  } catch {
+    sendError(response, 400, 'INVALID_PATH', 'The request path is invalid');
+    return;
+  }
+
+  const root = resolve(publicDirectory);
+  const requestedPath = resolve(root, `.${decodedPath === '/' ? '/index.html' : decodedPath}`);
+  const relativePath = relative(root, requestedPath);
+  if (isAbsolute(relativePath) || relativePath === '..' || relativePath.startsWith(`..${sep}`)) {
+    sendError(response, 404, 'NOT_FOUND', 'File not found');
+    return;
+  }
+
+  try {
+    const [realRoot, realFile] = await Promise.all([realpath(root), realpath(requestedPath)]);
+    const actualRelativePath = relative(realRoot, realFile);
+    if (
+      isAbsolute(actualRelativePath) ||
+      actualRelativePath === '..' ||
+      actualRelativePath.startsWith(`..${sep}`)
+    ) {
+      sendError(response, 404, 'NOT_FOUND', 'File not found');
+      return;
+    }
+
+    const fileStats = await stat(realFile);
+    if (!fileStats.isFile()) {
+      sendError(response, 404, 'NOT_FOUND', 'File not found');
+      return;
+    }
+    response.writeHead(200, {
+      'content-length': fileStats.size,
+      'content-type': CONTENT_TYPES[extname(realFile).toLowerCase()] ?? 'application/octet-stream',
+    });
+    if (method === 'HEAD') {
+      response.end();
+      return;
+    }
+    const stream = createReadStream(realFile);
+    stream.on('error', () => {
+      if (response.headersSent) response.destroy();
+      else sendError(response, 500, 'INTERNAL_ERROR', 'An unexpected error occurred');
+    });
+    stream.pipe(response);
+  } catch (error) {
+    if (error.code === 'ENOENT' || error.code === 'ENOTDIR') {
+      sendError(response, 404, 'NOT_FOUND', 'File not found');
+      return;
+    }
     throw error;
   }
 }
 
-async function serveStatic(response, pathname, publicDir) {
-  let decoded;
-  try {
-    decoded = decodeURIComponent(pathname);
-  } catch {
-    throw new DomainError('BAD_REQUEST', 'Invalid URL path encoding');
+export function createAppServer({ router = new Router(), publicDirectory = DEFAULT_PUBLIC_DIRECTORY } = {}) {
+  if (!router.match('GET', '/health')) {
+    router.get('/health', () => ({ status: 200, body: { status: 'ok' } }));
   }
-  if (decoded.includes('\0') || decoded.includes('\\')) {
-    throw new DomainError('NOT_FOUND', 'File not found');
-  }
-
-  const root = await realpath(publicDir);
-  const relative = decoded.replace(/^\/+/, '') || 'index.html';
-  const candidate = path.resolve(root, relative);
-  if (candidate !== root && !candidate.startsWith(root + path.sep)) {
-    throw new DomainError('NOT_FOUND', 'File not found');
-  }
-
-  let actual;
-  try {
-    actual = await realpath(candidate);
-  } catch {
-    throw new DomainError('NOT_FOUND', 'File not found');
-  }
-  if (actual !== root && !actual.startsWith(root + path.sep)) {
-    throw new DomainError('NOT_FOUND', 'File not found');
-  }
-
-  const info = await stat(actual);
-  if (!info.isFile()) throw new DomainError('NOT_FOUND', 'File not found');
-  const content = await readFile(actual);
-  const type = MIME_TYPES[path.extname(actual).toLowerCase()] ?? 'application/octet-stream';
-  response.writeHead(200, { 'content-type': type, 'content-length': content.length });
-  response.end(content);
-}
-
-export function createApp({ publicDir = new URL('../../public/', import.meta.url), router = createRouter() } = {}) {
-  router.add('GET', '/health', (_request, response) => {
-    sendJson(response, 200, { status: 'ok' });
-  });
 
   return createServer(async (request, response) => {
     try {
-      await readJsonBody(request);
-      const requestUrl = new URL(request.url ?? '/', 'http://localhost');
-      const match = router.match(request.method ?? 'GET', requestUrl.pathname);
+      const url = new URL(request.url, 'http://localhost');
+      const route = router.match(request.method ?? 'GET', url.pathname);
+      const body = await readJsonBody(request);
 
-      if (match?.error === 'BAD_PATH_ENCODING') {
-        return sendJson(response, 400, { error: { code: 'BAD_REQUEST', message: 'Invalid URL path encoding' } });
+      if (route) {
+        const result = await route.handler({ request, params: route.params, body });
+        sendJson(response, result?.status ?? 200, result?.body ?? result ?? null);
+      } else if (url.pathname === '/api' || url.pathname.startsWith('/api/')) {
+        sendError(response, 404, 'NOT_FOUND', 'API route not found');
+      } else if (request.method === 'GET' || request.method === 'HEAD') {
+        await servePublicFile(response, url.pathname, publicDirectory, request.method);
+      } else {
+        sendError(response, 404, 'NOT_FOUND', 'Route not found');
       }
-
-      if (match) {
-        await match.handler(request, response, { params: match.params, url: requestUrl });
-        return;
-      }
-
-      if (requestUrl.pathname.startsWith('/api/')) {
-        return sendJson(response, 404, { error: { code: 'NOT_FOUND', message: 'API route not found' } });
-      }
-
-      if (request.method !== 'GET' && request.method !== 'HEAD') {
-        return sendJson(response, 404, { error: { code: 'NOT_FOUND', message: 'Route not found' } });
-      }
-
-      await serveStatic(response, requestUrl.pathname, publicPathFrom(publicDir));
     } catch (error) {
       if (response.headersSent) {
-        response.destroy();
+        response.destroy(error);
         return;
       }
-      if (error instanceof SyntaxError && error.code === 'INVALID_JSON') {
-        return sendJson(response, 400, { error: { code: 'BAD_JSON', message: 'Request body must contain valid JSON' } });
-      }
       if (error instanceof DomainError) {
-        const status = error.code === 'NOT_FOUND' ? 404 :
-          error.code === 'VALIDATION' || error.code === 'BAD_REQUEST' ? 400 :
-          error.code === 'INVALID_TRANSITION' || error.code === 'INVALID_STATE' ? 409 : 500;
-        return sendJson(response, status, { error: { code: error.code, message: error.message } });
+        sendError(response, 400, error.code, error.message);
+        return;
       }
-      return sendJson(response, 500, { error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred' } });
+      sendError(response, 500, 'INTERNAL_ERROR', 'An unexpected error occurred');
     }
   });
 }
